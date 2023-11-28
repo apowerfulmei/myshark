@@ -1,25 +1,4 @@
-#include <linux/kernel.h>  
-#include <linux/init.h>  
-#include <linux/module.h>  
-#include <linux/version.h>  
-#include <linux/string.h>  
-#include <linux/kmod.h>  
-#include <linux/vmalloc.h>  
-#include <linux/workqueue.h>  
-#include <linux/spinlock.h>  
-#include <linux/socket.h>  
-#include <linux/net.h>  
-#include <linux/in.h>  
-#include <linux/skbuff.h>  
-#include <linux/ip.h>  
-#include <linux/tcp.h>  
-#include <linux/udp.h>
-#include <linux/netfilter.h>  
-#include <linux/netfilter_ipv4.h>  
-#include <linux/icmp.h>  
-#include <net/sock.h>  
-#include <asm/uaccess.h>  
-#include <asm/unistd.h>  
+#include "common.h"
 
 
 #define NETLINK_TEST	17
@@ -415,19 +394,7 @@ unsigned int nat_out(unsigned int hooknum,
 
 
 /*filter相关------------------------------------------------------------------------------------------------------------*/
-unsigned int check_tcp(void)
-{
-	//检查连接是否已存在
 
-
-
-	//检测是否为新建连接
-
-
-	//规则匹配
-
-
-}
 
 unsigned int DEFAULT_ACTION = NF_ACCEPT;
 
@@ -553,52 +520,6 @@ void nltest_krecv(struct sk_buff *skb)
 	char tid;//rule/nat/connection
 	printk("recv buf %s type %d\n",data,type);
 	memset(msg,0,2048);
-	switch(type)
-	{
-		case 1:
-		//增加规则
-		//写入内存
-	   	loadbuf_to_rule(data+2);
-		strcpy(msg,"load rule success!\n");
-		break;
-		case 2:
-		//去除规则
-		tid=data[3];
-		printk("to show %s",data);
-		sscanf(data+5,"%d",&id);
-		if(tid=='r')
-			rules[id].work=-1; //停止工作
-		else if(tid=='n')
-			nats[id].work=-1;
-		strcpy(msg,"%d stop working\n");
-		break;
-
-		case 3:
-		//查看所有规则
-		tid=data[3];
-		printk("to show %c",tid);
-		if(tid=='r')
-		{
-			printk("load all rule\n");
-			load_allrule(msg);
-		}
-		else if(tid=='n')
-			load_allnat(msg);
-		else if(tid=='c')
-			load_allconc(msg);
-		break;
-		case 4:
-		//清空，并使current归0
-		curn=0;
-		break;
-		case 5:
-		//增加nat
-		sscanf(data+2,"%u",sip);
-		default:
-		break;
-		
-
-	}
 	pid = nlh->nlmsg_pid;
 	printk("to send back %s\n",msg);
 	nltest_ksend(msg, pid);
@@ -618,25 +539,7 @@ struct netlink_kernel_cfg nltest_cfg = {
 //init
 int __init nltest_init(void)
 {
-	//模块启动
-	char buf[]="My name is mky";
-	char buf1[30];
-	printk("Netlink test module initializing...\n");
-	//连接规则文件
-	log= filp_open("/home/seed/rule_file",O_RDWR | O_CREAT,0644);
-    if (IS_ERR(log)){
-        printk("create file error/n");
-        return -1;
-    }
 
-    fs = get_fs();
-    set_fs(KERNEL_DS);
-    pos =0;
-    vfs_write(log, buf, sizeof(buf), &pos);
-    pos =0;
-    vfs_read(log, buf1, sizeof(buf), &pos);
-    printk("read: %s/n",buf1);
-    filp_close(log,NULL);
     //创建neilink socket
 	nlsk = netlink_kernel_create(&init_net, NETLINK_TEST, &nltest_cfg);
 	if (!nlsk) {
@@ -658,9 +561,9 @@ int __init nltest_init(void)
 	natop_out.pf = PF_INET;  
 	natop_out.hooknum = NF_INET_LOCAL_IN;  
 	natop_out.priority = NF_IP_PRI_FIRST;    
-	nf_register_hook(&nfho);                                  /// 注册一个钩子函数  
-	nf_register_hook(&natop_in);
-	nf_register_hook(&natop_out);
+	nf_register_net_hook(&nfho);                                  /// 注册一个钩子函数  
+	nf_register_net_hook(&natop_in);
+	nf_register_net_hook(&natop_out);
 	return 0;
 }
 
@@ -669,9 +572,9 @@ void __exit nltest_exit(void)
 {
 	sock_release(nlsk->sk_socket);
 	printk("kexec myfirewall exit ...\n");  
-	nf_unregister_hook(&nfho);  
-	nf_unregister_hook(&natop_in);
-	nf_unregister_hook(&natop_out);
+	nf_unregister_net_hook(&nfho);  
+	nf_unregister_net_hook(&natop_in);
+	nf_unregister_net_hook(&natop_out);
 	printk("Netlink test module exit!\n");
 }
 
