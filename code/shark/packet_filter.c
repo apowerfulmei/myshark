@@ -1,5 +1,5 @@
 #include "common.h"
-	  
+#include <linux/spinlock.h>  
 MODULE_LICENSE("GPL");  
 MODULE_AUTHOR("xsc");  
 #define NETLINK_TEST	17
@@ -16,6 +16,7 @@ static struct sock *nlsk = NULL;
 static struct nf_hook_ops nfho;  
 static struct nf_hook_ops natop_in;
 static struct nf_hook_ops natop_out; 
+static DEFINE_RWLOCK(ruleLock);
 int pid=-1;
 int start=0;
 
@@ -36,8 +37,9 @@ int nltest_ksend(void *info,int rlen,uint16_t type )
 	printk("pid:%d",pid);
 
 	nlh = nlmsg_put(skb, 0, 0, 0, NLMSG_SPACE(rlen) - NLMSG_HDRLEN, 0);
-	nlh->nlmsg_type=type;
+	
 	memcpy(NLMSG_DATA(nlh), info, rlen);
+	nlh->nlmsg_type=type;
 	printk("[kernel space] nlmsglen = %d\n", nlh->nlmsg_len);
 
 	//NETLINK_CB(skb).pid = 0;
@@ -54,32 +56,43 @@ int nltest_ksend(void *info,int rlen,uint16_t type )
 struct F_msg{
     int proto;
     unsigned char sip[16];
-    uint16_t sport;
+    uint16_t slport;
+	uint16_t shport;
     unsigned char dip[16];
-    uint16_t dport;
-}filter_rule={-1,"any",-1,"any",-1};
+    uint16_t dlport;
+	uint16_t dhport;
+};
+struct F_msg *filter_rule=NULL;
 
-uint16_t dealMsg(uint16_t msg_type,int skb_pid,void *data)
+uint16_t dealMsg(uint16_t msg_type,void *data)
 {
+
 	switch(msg_type)
 	{
 		case NLMSG_RSP :
 		//开始
 		start=1;
-		pid=skb_pid;
-		printk("finish link build with %d",pid);
 		return NLMSG_RSP;
 
 		case NLMSG_RULE :
 		//接收过滤规则内容
-		filter_rule=(struct F_msg *)data;
-
+		
+		//printk("recv new rule %d %s %d %d %s %d %d",filter_rule->proto,filter_rule->sip,filter_rule->slport,filter_rule->shport,filter_rule->dip,filter_rule->dlport,filter_rule->dhport);
+		write_lock(&ruleLock);
+		if(filter_rule==NULL)
+		{
+			filter_rule=(struct F_msg *) kzalloc(sizeof(struct F_msg), GFP_KERNEL);
+		}
+		memcpy(filter_rule,data,sizeof(struct F_msg));
+		printk("recv new rule %d %s %d %d %s %d %d",filter_rule->proto,filter_rule->sip,filter_rule->slport,filter_rule->shport,filter_rule->dip,filter_rule->dlport,filter_rule->dhport);
+		printk("recv data %x",data);
+		printk("recv rule %s %s",filter_rule->sip,filter_rule->dip);
+		write_unlock(&ruleLock);
 		return NLMSG_RULE;
 
 		case NLMSG_STOP :
 		//嗅探器停止
 		start=0;
-		pid=-1;
 		return NLMSG_STOP;
 
 		
@@ -110,7 +123,9 @@ void nltest_krecv(struct sk_buff *skb)
 	memset(msg,0,256);
 	uint16_t type= nlh->nlmsg_type;
 	printk("to send back %s\n",msg);
-	nltest_ksend("hi",3,dealMsg(type,nlh->nlmsg_pid,data));
+	pid=nlh->nlmsg_pid;
+	printk("finish link build with %d",pid);
+	nltest_ksend("hi",3,dealMsg(type,data));
 }
 
 struct netlink_kernel_cfg nltest_cfg = {
@@ -179,29 +194,38 @@ unsigned int hook_func(unsigned int hooknum,
     // 查询是否有已有连接
 
     printk("pipei\n");
-    // 匹配规则
-    // for(i=1;i<=curn;i++)
-    // {
-    // 	if(rules[i].work==-1) continue;
-    // 	if(!(isIPMatch(sip,rules[i].src,rules[i].smask))&&isIPMatch(dip,rules[i].dst,rules[i].dmask))
-    // 		continue;
-    // 	if(!((rules[i].sport==-1||sport==rules[i].sport)&&(rules[i].dport==-1||dport==rules[i].dport)))
-    // 		continue;
-    // 	if(!(header->protocol==rules[i].protocol))
-    // 		continue;
-    // 	isMatch=i;
-    // 	break;
-    // }
+	//协议匹配
+	read_lock(&ruleLock);
+	if(filter_rule!=NULL)
+	{
+		if(filter_rule->proto!=0&&filter_rule->proto!=header->protocol ){
+			printk("protocol not pipei");
+			return NF_ACCEPT;
+		}
+		if(sport>filter_rule->shport || sport<filter_rule->slport){
 
-    //
-    // if(isMatch) { // 匹配到了一条规则
-    // 	action = (rules[isMatch].opr=='y') ? NF_ACCEPT : NF_DROP;
+			printk("sport not pipei");
+			return NF_ACCEPT;
+		}
+		if(dport>filter_rule->dhport || dport<filter_rule->dlport){
 
-    // }
-    // // 更新连接池
-    // if(action == NF_ACCEPT) {
-    //     addConn(sip,dip,sport,dport,header->protocol);
-    // }
+			printk("dport not pipei");
+			return NF_ACCEPT;
+		}
+		if(strcmp(filter_rule->sip,"")!=0 && strcmp(filter_rule->sip,saddr)!=0){
+
+			printk("sip not pipei");
+			return NF_ACCEPT;
+		}
+		if(strcmp(filter_rule->dip,"")!=0 && strcmp(filter_rule->dip,daddr)!=0){
+
+			printk("dip not pipei");
+			return NF_ACCEPT;
+		}			
+	}
+	read_unlock(&ruleLock);
+
+
 	sprintf(msg,"%s %s %u %u %d\n",saddr,daddr,sport,dport,header->protocol);
 	if(pid!=-1)
 		nltest_ksend(packet,totallen,NLMSG_PACKET);
@@ -236,6 +260,7 @@ static void kexec_test_exit(void)
 {  
 	    // printk("kexec myfirewall exit ...\n");  
 	nf_unregister_net_hook(&init_net,&nfho);  
+	kfree(filter_rule);
 	netlink_kernel_release(nlsk);
 }  
   
