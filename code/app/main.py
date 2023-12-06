@@ -16,13 +16,16 @@ list_view = sg.Listbox(['item 1', 'item 2'])
 # -----------初始化-------------
 # 定义Netlink socket的相关常量
 NETLINK_TEST =17
+
 NETLINK_ROUTE = 0  # Netlink路由协议
 NLMSG_RSP = 1  # 没有操作
 NLMSG_PACKET = 2  # 错误
 NLMSG_ERROR = 3  # 完成
 NLMSG_RULE = 4  # 超出
+
 # 创建Netlink socket
 sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 17)
+
 # 定义数据包结构
 fmt = "IHHII"
 filter_fmt="I 16s HH 16s HH"
@@ -115,19 +118,7 @@ def clear_storage(window):
     window['-TABLE-'].update(values=rows)
 
 
-
-def long_time_work(window):
-    global inner,text
-    for i in range(10):
-        time.sleep(1)
-        window.write_event_value('任务进度', i)
-        inner+='1'
-        text.update(inner)
-
-    window.write_event_value('任务结束', '')
-
-
-def detail_window():
+def filter_window():
     #数据包详细信息框弹窗
     global rule
     f_protocol,f_sip,f_slport,f_shport,f_dip,f_dlport,f_dhport=filter_data.unpack(rule)
@@ -208,9 +199,8 @@ def main_window():
     #开始和停止按钮
     upButtons=[sg.B('start'),sg.B('stop'),sg.B('clear'),sg.B('filter'),pattern]
     #过滤信息
-
     #myshark数据包显示窗口
-    toprow = ['S.No.', 'Name', 'Age', 'Marks']
+
     #使用listbox显示更加平滑
     tbl1 = sg.Listbox(values=rows,
                      key='-TABLE-',
@@ -227,7 +217,7 @@ def main_window():
     )
 
     #详细信息显示
-    layout = [[upButtons],[tbl1],[sg.B('mad'),sg.Text('Packet Detail')],[detail]]
+    layout = [[upButtons],[tbl1],[sg.Text('Packet Detail')],[detail]]
     window = sg.Window("MyShark", layout,size=(600,700), resizable=True)
     return window
 
@@ -254,7 +244,7 @@ def main():
         if event == 'clear':
             clear_storage(window)
         if event == 'filter':
-            thread = threading.Thread(target=detail_window(), daemon=True)
+            thread = threading.Thread(target=filter_window(), daemon=True)
             thread.start()
 
         #获取listbox点击信息
