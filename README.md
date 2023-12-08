@@ -2,7 +2,7 @@
 
 ### 要求
 
-<img src="C:\Users\梅某彦\AppData\Roaming\Typora\typora-user-images\image-20231105171857478.png" alt="image-20231105171857478" style="zoom: 67%;" />
+<img src=".\image\problem.png" alt="image-20231105171857478" style="zoom: 67%;" />
 
 
 
@@ -39,7 +39,7 @@ dport
 
 模块：
 
-<img src="C:\Users\梅某彦\AppData\Roaming\Typora\typora-user-images\image-20231105175854203.png" alt="image-20231105175854203" style="zoom:67%;" />
+<img src=".\image\kernel_struct.png" alt="image-20231105175854203" style="zoom:67%;" />
 
 截获数据包，分析出IP层信息，对其进行过滤，通过过滤的数据包将整个包发送给应用层
 
